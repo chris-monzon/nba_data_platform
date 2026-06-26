@@ -6,8 +6,7 @@ play-by-play (PBP) for the **2015-16 season**, and serves an interactive event-m
 This repo is the **platform layer** (ingestion → warehouse → gold tables). The dashboard is a
 **consumer** that sits on top of the gold layer.
 
-> **Status:** Scaffolding (Milestone 4). Folder structure, config, and stubs are in place;
-> pipeline logic and final schema DDL are in progress. See [CHECKLIST.md](CHECKLIST.md).
+> **Status:** See [CHECKLIST.md](CHECKLIST.md).
 
 ---
 
@@ -47,7 +46,6 @@ tracking moment, done in **BigQuery SQL** (`transform/gold_events_with_location.
 | Ingestion | **Python on Cloud Run** | parse heavy JSON → Parquet (per-game, idempotent) |
 | Warehouse | **BigQuery** | single OLAP warehouse; SQL transforms |
 | Serve | **Streamlit** | interactive event-map dashboard (consumer) |
-| Tooling | **uv**, Python **3.11**, Git/GitHub | env + deps + collaboration |
 
 ## Data sources
 
