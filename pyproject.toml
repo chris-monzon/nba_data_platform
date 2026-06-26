@@ -27,3 +27,14 @@ package = false
 # cryptography 49 dropped x86_64 macOS wheels; cap below it so installs stay wheel-only
 # (compiler-free) across Intel/Apple Silicon/Linux.
 constraint-dependencies = ["cryptography<49"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+# Put the repo root on sys.path so tests import `ingestion` like the scripts do
+# (they run as `python -m ingestion.*` from root; pytest needs this told explicitly).
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
