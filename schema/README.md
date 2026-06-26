@@ -2,13 +2,13 @@
 
 Schema design for the platform.
 
-> **DRAFT — under revision.** The ER diagram below reflects the midterm design and is being
-> updated (BigQuery warehouse, event-map focus). DDL will be added once finalized.
+> Schema gate locked 2026-06-26 (silver model + gold serving layer). DDL to follow.
 
 ## Files
 
-- `er_diagram.png` — entity-relationship diagram (exported from the team deck).
-  Replace with a clean export from Google Slides when convenient.
+- `er_diagram.md` — **source of record**: text-based Mermaid ER diagram (silver) + gold lineage,
+  reflecting the locked decisions. Renders inline on GitHub.
+- `er_diagram_original.png` — prior rendered export (midterm design); kept for reference.
 
 ## Model summary
 
