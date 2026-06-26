@@ -1,0 +1,36 @@
+# --- Secrets / credentials (NEVER commit) ---
+.env
+*.env
+!.env.example
+secrets/
+*-sa.json
+service-account*.json
+gcp-key*.json
+*-credentials.json
+
+# --- Local class materials (not part of the project) ---
+course_materials/
+
+# --- Data: never commit raw or derived data (see data/README.md to obtain it) ---
+data/*
+!data/README.md
+*.json
+*.parquet
+*.7z
+*.zip
+*.duckdb
+
+# --- Python / uv ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.uv/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/

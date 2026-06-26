@@ -1,0 +1,29 @@
+[project]
+name = "nba-data-platform"
+version = "0.1.0"
+description = "Cloud data platform fusing SportVU optical tracking with play-by-play for the 2015-16 NBA season."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Ingestion / parsing
+    "pandas",
+    "pyarrow",
+    "py7zr",          # unzip .7z tracking archives
+    "requests",
+    "nba-on-court",   # play-by-play source library
+    # GCP warehouse + storage
+    "google-cloud-bigquery",
+    "google-cloud-storage",
+    "db-dtypes",      # BigQuery -> pandas type support
+    # Serve (consumer)
+    "streamlit",
+    "matplotlib",     # court rendering
+]
+
+# This is an application, not a distributable library — tell uv not to build it as a package.
+[tool.uv]
+package = false
+
+# cryptography 49 dropped x86_64 macOS wheels; cap below it so installs stay wheel-only
+# (compiler-free) across Intel/Apple Silicon/Linux.
+constraint-dependencies = ["cryptography<49"]

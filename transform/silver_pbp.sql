@@ -1,0 +1,8 @@
+-- silver_pbp.sql
+-- Layer: SILVER | Source: bronze/silver PBP (from nba_on_court)
+-- Purpose: clean and conform play-by-play events (standardize types, ids, clock).
+--
+-- STUB — TODO:
+--   - cast/clean event fields, normalize team/player ids to conformed dims
+--   - standardize game clock to a numeric seconds value for the fuzzy join
+--   - filter to the in-scope game subset

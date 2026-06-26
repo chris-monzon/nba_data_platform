@@ -1,0 +1,17 @@
+-- gold_events_with_location.sql
+-- Layer: GOLD | The HEADLINE transformation.
+-- Purpose: fuzzy-clock join each play-by-play event to the nearest 25 Hz tracking
+--          moment, producing one row per event with the acting player's court (x, y).
+--          This is the single table the Streamlit dashboard reads.
+--
+-- Grain (to confirm with schema): one row per event (acting player's location at event time).
+-- Candidate columns: game_id, period, game_clock, event_type, player_id, player_name,
+--                     team_id, loc_x, loc_y, is_made, points
+--
+-- NOTE: table/column names are placeholders pending the schema finalization in schema/.
+--
+-- STUB — TODO:
+--   - join silver_pbp <-> silver_tracking on (game_id, period) with nearest game_clock
+--     (fuzzy match within a small tolerance window) at full 25 Hz for precision
+--   - pick the acting player's (x, y) for each event
+--   - materialize as the gold `events_with_location` table

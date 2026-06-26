@@ -1,0 +1,8 @@
+-- silver_tracking.sql
+-- Layer: SILVER | Source: silver tracking Parquet (from ingestion/parse_tracking.py)
+-- Purpose: conform parsed 25 Hz tracking moments for joining (types, ids, clock).
+--
+-- STUB — TODO:
+--   - load parsed Parquet (external table or native load)
+--   - normalize player/team ids, period, game clock to numeric seconds
+--   - keep full 25 Hz resolution (no time-downsample)
