@@ -51,18 +51,39 @@ def join_path(root: str, *parts: str) -> str:
     return "/".join([str(root).rstrip("/"), *parts])
 
 
-def bronze_path(output_root: str, source: str, game: Game, filename: str) -> str:
-    """e.g. <root>/bronze/tracking/season=2015-16/game_id=0021500438/0021500438.json"""
+def _partition_path(output_root: str, layer: str, dataset: str, game: Game, filename: str) -> str:
     return join_path(
-        output_root, "bronze", source,
+        output_root, layer, dataset,
         f"season={game.season}", f"game_id={game.game_id}", filename,
     )
+
+
+def bronze_path(output_root: str, source: str, game: Game, filename: str) -> str:
+    """e.g. <root>/bronze/tracking/season=2015-16/game_id=0021500438/0021500438.json"""
+    return _partition_path(output_root, "bronze", source, game, filename)
+
+
+def silver_path(output_root: str, dataset: str, game: Game, filename: str) -> str:
+    """e.g. <root>/silver/tracking_moment/season=2015-16/game_id=0021500438/moment.parquet"""
+    return _partition_path(output_root, "silver", dataset, game, filename)
 
 
 def exists(dest: str) -> bool:
     if is_gcs(dest):
         raise NotImplementedError("GCS existence check deferred — see write_bytes seam")
     return os.path.exists(dest)
+
+
+def read_bytes(src: str) -> bytes:
+    """Read bytes from a local path, or (later) GCS. Mirror of write_bytes."""
+    if is_gcs(src):
+        # Deferred seam — fill with google-cloud-storage (already a dependency):
+        #   from google.cloud import storage
+        #   bucket, _, blob = src[len("gs://"):].partition("/")
+        #   return storage.Client().bucket(bucket).blob(blob).download_as_bytes()
+        raise NotImplementedError("GCS read deferred — read from a local --output-root for now")
+    with open(src, "rb") as f:
+        return f.read()
 
 
 def write_bytes(dest: str, data: bytes) -> None:
