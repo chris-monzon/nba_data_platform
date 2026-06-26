@@ -1,0 +1,174 @@
+# Schema — ER Diagram (silver) + Gold lineage
+
+> Text-based source of record for the schema. Renders inline on GitHub.
+> The prior rendered export is kept alongside at [`er_diagram_original.png`](er_diagram_original.png).
+
+## Legend
+
+- **dim** = conformed dimension · **fact** = fact table · **bridge** = many-to-many bridge.
+- **Implemented** = everything below *except* the clearly-marked future block.
+- **FUTURE / not built** = `POSSESSION` (per-possession fact + `epv_estimate`, the EPV foundation) and
+  its `EVENT.possession_id` FK. Designed-for, intentionally **not** built in the PoC (EPV is out of scope).
+  Mermaid `erDiagram` can't grey a table, so future entities are isolated in the marked block below and in
+  every relationship label; treat that block as greyed/dashed when presenting.
+- **On-court lineup is deliberately absent** — the 10 on-court players come *from the tracking moment itself*
+  (`PLAYER_LOCATION`), so no lineup table is needed. `EVENT_PARTICIPANT` is the *direct play participants*
+  bridge (shooter/assister/fouler), which is a different thing and **is** implemented.
+
+## Silver — dimensional model (galaxy / fact constellation)
+
+```mermaid
+erDiagram
+    %% ============ DIMENSIONS ============
+    SEASON {
+        int    season_id    PK
+        string season_label
+        date   start_date
+        date   end_date
+    }
+    TEAM {
+        int    team_id      PK
+        string abbreviation
+        string full_name
+        string conference
+    }
+    PLAYER {
+        int    player_id        PK
+        int    primary_team_id  FK "denorm"
+        string first_name
+        string last_name
+        string position
+    }
+    GAME {
+        int    game_id       PK
+        int    season_id     FK
+        int    home_team_id  FK
+        int    away_team_id  FK
+        date   game_date
+        string arena
+    }
+
+    %% ============ FACTS (implemented) ============
+    EVENT {
+        int     game_id      PK,FK "PK is game-scoped"
+        int     event_id     PK    "= PBP EVENTNUM, unique within game"
+        int     period
+        decimal game_clock
+        string  event_type
+        string  description
+    }
+    SHOT {
+        int     event_id           PK,FK "1:1 weak ext. of EVENT"
+        int     shooter_id         FK
+        string  shot_type
+        string  shot_zone          "derived"
+        decimal shot_distance
+        decimal contested_distance "derived"
+        boolean is_made
+        int     points
+    }
+    MOMENT {
+        int     moment_id   PK   "= tracking timestamp_ms, deduped, globally unique"
+        int     game_id     FK
+        int     period
+        decimal game_clock
+        decimal shot_clock  "nullable"
+        decimal ball_x
+        decimal ball_y
+        decimal ball_z
+    }
+    PLAYER_LOCATION {
+        int     moment_id PK,FK
+        int     player_id PK,FK
+        int     team_id   FK
+        decimal loc_x
+        decimal loc_y
+    }
+
+    %% ============ BRIDGE ============
+    EVENT_PARTICIPANT {
+        int    event_id  PK,FK
+        int    player_id PK,FK
+        string role      PK
+        int    team_id   FK
+    }
+
+    %% ============ FUTURE / NOT BUILT (treat as greyed) ============
+    POSSESSION {
+        int     possession_id   PK   "FUTURE / not built"
+        int     game_id         FK   "FUTURE"
+        int     offense_team_id FK   "FUTURE"
+        int     defense_team_id FK   "FUTURE"
+        int     period               "FUTURE"
+        decimal start_game_clock      "FUTURE"
+        decimal end_game_clock        "FUTURE"
+        int     points_scored         "FUTURE"
+        string  outcome_type          "FUTURE"
+        decimal epv_estimate          "FUTURE / EPV"
+    }
+
+    %% ---- relationships (implemented) ----
+    TEAM   ||--o{ PLAYER            : "primary team (denorm)"
+    SEASON ||--o{ GAME              : "spans"
+    TEAM   ||--o{ GAME              : "home team"
+    TEAM   ||--o{ GAME              : "away team"
+    GAME   ||--o{ EVENT             : "contains"
+    GAME   ||--o{ MOMENT            : "tracked in"
+    EVENT  ||--o| SHOT              : "may be (1:1)"
+    EVENT  ||--o{ EVENT_PARTICIPANT : "involves"
+    PLAYER ||--o{ EVENT_PARTICIPANT : "participates as"
+    PLAYER ||--o{ PLAYER_LOCATION   : "located as"
+    MOMENT ||--o{ PLAYER_LOCATION   : "captures"
+    EVENT  ||--o{ MOMENT            : "aligns: derived, fuzzy clock"
+
+    %% ---- relationships (FUTURE / not built) ----
+    GAME       ||--o{ POSSESSION : "contains (future)"
+    TEAM       ||--o{ POSSESSION : "on offense (future)"
+    TEAM       ||--o{ POSSESSION : "on defense (future)"
+    POSSESSION ||--o{ EVENT      : "sequences (future)"
+```
+
+### Changes from `er_diagram_original.png` (this redraw)
+
+1. **Removed `event_id` FK from `MOMENT`** — after dedup an instant maps to multiple SportVU eventIds (multi-valued) and SportVU `eventId` is not a trusted join key; the `EVENT ⟷ MOMENT` link is the derived fuzzy-clock relationship instead.
+2. **`POSSESSION` (+ `EVENT.possession_id`) marked FUTURE / not built** — greyed in the diagram, narrated as roadmap.
+3. **No lineup table** — on-court players come from the tracking moment; `EVENT_PARTICIPANT` (direct participants) is unaffected.
+4. **`EVENT` PK is game-scoped `(game_id, event_id)`** — `event_id` alone (= PBP `EVENTNUM`) is only unique within a game.
+
+## Gold — serving layer lineage (not a dimensional entity)
+
+`events_with_location` is a **denormalized serving mart derived from the silver tables**, not part of the
+dimensional model above. Shown here as bronze → silver → gold lineage.
+
+```mermaid
+flowchart LR
+    subgraph BRONZE
+        b1["tracking JSON<br/>(per game)"]
+        b2["pbp parquet<br/>(per game)"]
+    end
+    subgraph SILVER["SILVER · dimensional model"]
+        s1[MOMENT]
+        s2[PLAYER_LOCATION]
+        s3[EVENT]
+        s4[SHOT]
+        s5["dims: GAME / PLAYER / TEAM / SEASON"]
+    end
+    subgraph GOLD["GOLD · serving marts"]
+        g1["events_with_location<br/>(event × player, full-floor)"]
+    end
+
+    b1 --> s1
+    b1 --> s2
+    b2 --> s3
+    b2 --> s4
+    s1 -->|ball + clocks| g1
+    s2 -->|player x,y| g1
+    s3 -->|"fuzzy clock (nearest, ±~1.5–2s)"| g1
+    s5 -->|names| g1
+
+    pf["POSSESSION + lineup<br/>FUTURE / not built"]:::future
+    classDef future fill:#eee,stroke:#999,stroke-dasharray:5 5,color:#666;
+```
+
+> Streamlit reads `events_with_location` directly (thin view) — all joining/fuzzy-matching is resolved upstream in gold.
+> To export a PNG for a deck: `mmdc -i schema/er_diagram.md -o schema/er_diagram_new.png` (mermaid-cli), or paste a block into <https://mermaid.live>.
