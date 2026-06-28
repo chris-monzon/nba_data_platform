@@ -32,23 +32,26 @@ def _fg_line(df) -> str:
 def main() -> None:
     st.set_page_config(page_title="NBA Shot Map", layout="wide")
     st.title("NBA Shot Map")
-    st.caption("Denver Chicken Nuggets · CLE @ GSW, 2015-12-25 (game 0021500438)")
 
-    players = queries.list_players()
-    if not players:
-        st.error("No player data returned from the gold layer.")
+    games = queries.list_games()
+    if not games:
+        st.error("No games with located shots in the gold layer.")
         return
+    game_ids = {g["label"]: g["game_id"] for g in games}
 
     controls, chart = st.columns([1, 2], gap="large")
     with controls:
-        player = st.selectbox("Player", players)
+        game_label = st.selectbox("Game", list(game_ids))
+        game_id = game_ids[game_label]
+        player = st.selectbox("Player", queries.list_players(game_id))
         result = st.segmented_control("Result", ["All", "Made", "Missed"], default="All")
         shot_type = st.segmented_control("Shot type", ["All", "2PT", "3PT"], default="All")
 
-    shots = queries.get_shots(player)
+    # one cached query per game; player / result / type all filter in-memory
+    game_shots = queries.get_shots(game_id)
+    player_shots = game_shots[game_shots["event_player_name"] == player]
 
-    # in-memory subset for the chart (toggles never re-hit BigQuery)
-    view = shots
+    view = player_shots
     if result == "Made":
         view = view[view["shot_made_flag"]]
     elif result == "Missed":
@@ -59,9 +62,9 @@ def main() -> None:
         view = view[view["is_three"]]
 
     with controls:
-        st.metric("Located shots shown", f"{len(view)} of {len(shots)}")
-        st.markdown(f"**{player}** — {_fg_line(shots)}")
-        if len(shots) == 0:
+        st.metric("Located shots shown", f"{len(view)} of {len(player_shots)}")
+        st.markdown(f"**{player}** — {_fg_line(player_shots)}")
+        if len(player_shots) == 0:
             st.info("This player has no tracking-located shots in this game.")
 
     with chart:
