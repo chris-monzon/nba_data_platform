@@ -14,6 +14,10 @@
 - **On-court lineup is deliberately absent** — the 10 on-court players come *from the tracking moment itself*
   (`PLAYER_LOCATION`), so no lineup table is needed. `EVENT_PARTICIPANT` is the *direct play participants*
   bridge (shooter/assister/fouler), which is a different thing and **is** implemented.
+- **`SHOT` folded into `EVENT`** — a shot is a 1:1 specialization, so its PBP facts live on `EVENT`
+  (`shot_made_flag` now; `points`/`shot_type` later). Shot *geometry* (`shot_distance`/`shot_zone`) is a
+  cross-source derivation computed in the gold serving mart (not a dimensional entity), and
+  `contested_distance` is future/EPV.
 
 ## Silver — dimensional model (galaxy / fact constellation)
 
@@ -50,22 +54,13 @@ erDiagram
 
     %% ============ FACTS (implemented) ============
     EVENT {
-        int     game_id      PK,FK "PK is game-scoped"
-        int     event_id     PK    "= PBP EVENTNUM, unique within game"
+        int     game_id        PK,FK "PK is game-scoped"
+        int     event_id       PK    "= PBP EVENTNUM, unique within game"
         int     period
         decimal game_clock
         string  event_type
         string  description
-    }
-    SHOT {
-        int     event_id           PK,FK "1:1 weak ext. of EVENT"
-        int     shooter_id         FK
-        string  shot_type
-        string  shot_zone          "derived"
-        decimal shot_distance
-        decimal contested_distance "derived"
-        boolean is_made
-        int     points
+        boolean shot_made_flag        "SHOT folded in; geometry derived in gold"
     }
     MOMENT {
         int     moment_id   PK   "= tracking timestamp_ms, deduped, globally unique"
@@ -114,7 +109,6 @@ erDiagram
     TEAM   ||--o{ GAME              : "away team"
     GAME   ||--o{ EVENT             : "contains"
     GAME   ||--o{ MOMENT            : "tracked in"
-    EVENT  ||--o| SHOT              : "may be (1:1)"
     EVENT  ||--o{ EVENT_PARTICIPANT : "involves"
     PLAYER ||--o{ EVENT_PARTICIPANT : "participates as"
     PLAYER ||--o{ PLAYER_LOCATION   : "located as"
@@ -149,8 +143,7 @@ flowchart LR
     subgraph SILVER["SILVER · dimensional model"]
         s1[MOMENT]
         s2[PLAYER_LOCATION]
-        s3[EVENT]
-        s4[SHOT]
+        s3["EVENT<br/>(shot facts folded in)"]
         s5["dims: GAME / PLAYER / TEAM / SEASON"]
     end
     subgraph GOLD["GOLD · serving marts"]
@@ -160,7 +153,6 @@ flowchart LR
     b1 --> s1
     b1 --> s2
     b2 --> s3
-    b2 --> s4
     s1 -->|ball + clocks| g1
     s2 -->|player x,y| g1
     s3 -->|"fuzzy clock (nearest, ±~1.5–2s)"| g1

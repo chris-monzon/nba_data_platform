@@ -14,9 +14,11 @@ Scope tightened to a **SportVU + PBP event-map** proof-of-concept; **EPV is out 
 
 3. **`EVENT` primary key is game-scoped `(game_id, event_id)`.** `event_id` (= PBP `EVENTNUM`) is only unique *within* a game. This is the stable key future entities attach to.
 
+4. **`SHOT` folded into `EVENT`.** A shot is a 1:1 specialization of an event, and its fields split by layer: the **PBP facts** (`is_made` → `shot_made_flag`; `points`/`shot_type` later) are within-source, so they live on the `EVENT` fact rather than a separate table (over-normalizing ~335 shot rows isn't worth it). The **geometry** (`shot_distance`/`shot_zone`) is a *cross-source* derivation (PBP ⋈ tracking) computed in the `gold.events_with_location` serving mart, not silver. `contested_distance` is future/EPV. Net: no standalone `SHOT` table — removed from the silver ER diagram.
+
 ## Unchanged
 
-Dims (`SEASON`, `TEAM`, `PLAYER`, `GAME`), `EVENT`, `SHOT` (1:1 weak ext.), the `MOMENT` + `PLAYER_LOCATION` tracking facts (tall, header–detail; ball on `MOMENT`), and `EVENT_PARTICIPANT` (direct play participants).
+Dims (`SEASON`, `TEAM`, `PLAYER`, `GAME`), `EVENT`, the `MOMENT` + `PLAYER_LOCATION` tracking facts (tall, header–detail; ball on `MOMENT`), and `EVENT_PARTICIPANT` (direct play participants).
 
 ## Serving layer
 
