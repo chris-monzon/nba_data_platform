@@ -30,6 +30,13 @@ __pycache__/
 # --- Notebooks ---
 .ipynb_checkpoints/
 
+# --- Terraform / infra (gitignored entirely; not committed for now) ---
+infra/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
 # --- OS / editor ---
 .DS_Store
 .idea/

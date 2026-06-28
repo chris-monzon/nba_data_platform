@@ -14,6 +14,15 @@
 - **On-court lineup is deliberately absent** — the 10 on-court players come *from the tracking moment itself*
   (`PLAYER_LOCATION`), so no lineup table is needed. `EVENT_PARTICIPANT` is the *direct play participants*
   bridge (shooter/assister/fouler), which is a different thing and **is** implemented.
+- **`SHOT` folded into `EVENT`** — a shot is a 1:1 specialization, so its PBP facts live on `EVENT`
+  (`shot_made_flag` now; `points`/`shot_type` later). Shot *geometry* (`shot_distance`/`shot_zone`) is a
+  cross-source derivation computed in the gold serving mart (not a dimensional entity), and
+  `contested_distance` is future/EPV.
+- **`PLAYER` is bio-only; team modeled by the `PLAYER_TEAM_SEASON` SCD2 bridge.** A player's team is
+  time-varying (trades/seasons), so it's not a static player attribute. Team *for a given play* comes
+  from the facts (`PLAYER_LOCATION`/`EVENT_PARTICIPANT`); roster history is the Type-2 SCD bridge
+  (effective-dated `valid_from`/`valid_to`/`is_current`). PoC loads one current stint per player
+  (single season); the change-detecting MERGE load activates with multi-season data.
 
 ## Silver — dimensional model (galaxy / fact constellation)
 
@@ -33,8 +42,7 @@ erDiagram
         string conference
     }
     PLAYER {
-        int    player_id        PK
-        int    primary_team_id  FK "denorm"
+        int    player_id   PK
         string first_name
         string last_name
         string position
@@ -50,22 +58,13 @@ erDiagram
 
     %% ============ FACTS (implemented) ============
     EVENT {
-        int     game_id      PK,FK "PK is game-scoped"
-        int     event_id     PK    "= PBP EVENTNUM, unique within game"
+        int     game_id        PK,FK "PK is game-scoped"
+        int     event_id       PK    "= PBP EVENTNUM, unique within game"
         int     period
         decimal game_clock
         string  event_type
         string  description
-    }
-    SHOT {
-        int     event_id           PK,FK "1:1 weak ext. of EVENT"
-        int     shooter_id         FK
-        string  shot_type
-        string  shot_zone          "derived"
-        decimal shot_distance
-        decimal contested_distance "derived"
-        boolean is_made
-        int     points
+        boolean shot_made_flag        "SHOT folded in; geometry derived in gold"
     }
     MOMENT {
         int     moment_id   PK   "= tracking timestamp_ms, deduped, globally unique"
@@ -92,6 +91,15 @@ erDiagram
         string role      PK
         int    team_id   FK
     }
+    PLAYER_TEAM_SEASON {
+        int     player_team_season_id PK "surrogate (SCD2 version key)"
+        int     player_id  FK
+        int     team_id    FK
+        int     season_id  FK
+        date    valid_from
+        date    valid_to       "NULL = current"
+        boolean is_current
+    }
 
     %% ============ FUTURE / NOT BUILT (treat as greyed) ============
     POSSESSION {
@@ -108,15 +116,16 @@ erDiagram
     }
 
     %% ---- relationships (implemented) ----
-    TEAM   ||--o{ PLAYER            : "primary team (denorm)"
     SEASON ||--o{ GAME              : "spans"
     TEAM   ||--o{ GAME              : "home team"
     TEAM   ||--o{ GAME              : "away team"
     GAME   ||--o{ EVENT             : "contains"
     GAME   ||--o{ MOMENT            : "tracked in"
-    EVENT  ||--o| SHOT              : "may be (1:1)"
     EVENT  ||--o{ EVENT_PARTICIPANT : "involves"
     PLAYER ||--o{ EVENT_PARTICIPANT : "participates as"
+    PLAYER ||--o{ PLAYER_TEAM_SEASON : "roster stints (SCD2)"
+    TEAM   ||--o{ PLAYER_TEAM_SEASON : "rosters"
+    SEASON ||--o{ PLAYER_TEAM_SEASON : "within"
     PLAYER ||--o{ PLAYER_LOCATION   : "located as"
     MOMENT ||--o{ PLAYER_LOCATION   : "captures"
     EVENT  ||--o{ MOMENT            : "aligns: derived, fuzzy clock"
@@ -149,8 +158,7 @@ flowchart LR
     subgraph SILVER["SILVER · dimensional model"]
         s1[MOMENT]
         s2[PLAYER_LOCATION]
-        s3[EVENT]
-        s4[SHOT]
+        s3["EVENT<br/>(shot facts folded in)"]
         s5["dims: GAME / PLAYER / TEAM / SEASON"]
     end
     subgraph GOLD["GOLD · serving marts"]
@@ -160,7 +168,6 @@ flowchart LR
     b1 --> s1
     b1 --> s2
     b2 --> s3
-    b2 --> s4
     s1 -->|ball + clocks| g1
     s2 -->|player x,y| g1
     s3 -->|"fuzzy clock (nearest, ±~1.5–2s)"| g1
