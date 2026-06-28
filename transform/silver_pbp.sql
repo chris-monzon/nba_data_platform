@@ -99,10 +99,17 @@ SELECT
        WHEN EVENTMSGTYPE = 2 THEN FALSE END AS shot_made_flag,
   -- Exactly one of the three descriptions is populated (0 all-null rows in our data).
   COALESCE(HOMEDESCRIPTION, VISITORDESCRIPTION, NEUTRALDESCRIPTION) AS description,
-  -- Primary actor (PLAYER1). 0 is the "no player" sentinel; team id is float64(NaN) when absent.
-  NULLIF(PLAYER1_ID, 0)            AS event_player_id,
-  PLAYER1_NAME                     AS event_player_name,
-  SAFE_CAST(PLAYER1_TEAM_ID AS INT64) AS event_team_id
+  -- Primary actor (PLAYER1), conformed via PERSON1TYPE. PBP OVERLOADS the PLAYER1 slot: it holds a
+  -- real player only when PERSON1TYPE IN (4,5) (home/visitor player). For team-level events it holds
+  -- a *team* id (2=home team, 3=visitor team -- e.g. team rebound/timeout/turnover), and for replay
+  -- rulings an *official* id (type 0). So keep event_player_id a CLEAN FK to dim_player (real players
+  -- only, else NULL), and recover the team into event_team_id for BOTH player events (the player's
+  -- team) AND team events (the team id sitting in the player slot). 0 = "no player" sentinel;
+  -- PLAYER1_TEAM_ID is float64(NaN) when absent. (Found via cross-source FK validation vs dim_player.)
+  CASE WHEN PERSON1TYPE IN (4, 5) THEN NULLIF(PLAYER1_ID, 0) END AS event_player_id,
+  CASE WHEN PERSON1TYPE IN (4, 5) THEN PLAYER1_NAME END          AS event_player_name,
+  CASE WHEN PERSON1TYPE IN (4, 5) THEN SAFE_CAST(PLAYER1_TEAM_ID AS INT64)
+       WHEN PERSON1TYPE IN (2, 3) THEN PLAYER1_ID END            AS event_team_id
 FROM seasoned;
 
 
@@ -130,15 +137,17 @@ seasoned AS (
 ),
 unpivoted AS (
   -- Multi-column UNPIVOT: each PLAYERn_* triple becomes one row, tagged with participant_slot.
+  -- Carry PERSONnTYPE too: PBP overloads the player slots with team ids (type 2/3) and official ids
+  -- (type 0), so we filter to REAL players below -- the bridge is *direct PLAYER participants*.
   SELECT season_start_year, game_id, EVENTNUM AS event_id,
-         participant_slot, player_id, player_name, player_team_id
+         participant_slot, player_id, player_name, player_team_id, person_type
   FROM seasoned
   UNPIVOT (
-    (player_id, player_name, player_team_id)
+    (player_id, player_name, player_team_id, person_type)
     FOR participant_slot IN (
-      (PLAYER1_ID, PLAYER1_NAME, PLAYER1_TEAM_ID) AS 1,
-      (PLAYER2_ID, PLAYER2_NAME, PLAYER2_TEAM_ID) AS 2,
-      (PLAYER3_ID, PLAYER3_NAME, PLAYER3_TEAM_ID) AS 3
+      (PLAYER1_ID, PLAYER1_NAME, PLAYER1_TEAM_ID, PERSON1TYPE) AS 1,
+      (PLAYER2_ID, PLAYER2_NAME, PLAYER2_TEAM_ID, PERSON2TYPE) AS 2,
+      (PLAYER3_ID, PLAYER3_NAME, PLAYER3_TEAM_ID, PERSON3TYPE) AS 3
     )
   )
 )
@@ -152,7 +161,8 @@ SELECT
   SAFE_CAST(player_team_id AS INT64) AS team_id,
   CAST(NULL AS STRING)               AS role        -- semantic role decode deferred (additive later)
 FROM unpivoted
-WHERE player_id <> 0;                               -- drop empty slots (0 = "no player")
+WHERE person_type IN (4, 5);   -- real players only (4=home, 5=visitor); excludes team ids (2/3),
+                               -- officials (0), and empty slots (0-id) -- keeps the FK to dim_player clean
 
 
 -- ============================================================================
