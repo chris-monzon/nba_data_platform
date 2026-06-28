@@ -18,6 +18,11 @@
   (`shot_made_flag` now; `points`/`shot_type` later). Shot *geometry* (`shot_distance`/`shot_zone`) is a
   cross-source derivation computed in the gold serving mart (not a dimensional entity), and
   `contested_distance` is future/EPV.
+- **`PLAYER` is bio-only; team modeled by the `PLAYER_TEAM_SEASON` SCD2 bridge.** A player's team is
+  time-varying (trades/seasons), so it's not a static player attribute. Team *for a given play* comes
+  from the facts (`PLAYER_LOCATION`/`EVENT_PARTICIPANT`); roster history is the Type-2 SCD bridge
+  (effective-dated `valid_from`/`valid_to`/`is_current`). PoC loads one current stint per player
+  (single season); the change-detecting MERGE load activates with multi-season data.
 
 ## Silver — dimensional model (galaxy / fact constellation)
 
@@ -37,8 +42,7 @@ erDiagram
         string conference
     }
     PLAYER {
-        int    player_id        PK
-        int    primary_team_id  FK "denorm"
+        int    player_id   PK
         string first_name
         string last_name
         string position
@@ -87,6 +91,15 @@ erDiagram
         string role      PK
         int    team_id   FK
     }
+    PLAYER_TEAM_SEASON {
+        int     player_team_season_id PK "surrogate (SCD2 version key)"
+        int     player_id  FK
+        int     team_id    FK
+        int     season_id  FK
+        date    valid_from
+        date    valid_to       "NULL = current"
+        boolean is_current
+    }
 
     %% ============ FUTURE / NOT BUILT (treat as greyed) ============
     POSSESSION {
@@ -103,7 +116,6 @@ erDiagram
     }
 
     %% ---- relationships (implemented) ----
-    TEAM   ||--o{ PLAYER            : "primary team (denorm)"
     SEASON ||--o{ GAME              : "spans"
     TEAM   ||--o{ GAME              : "home team"
     TEAM   ||--o{ GAME              : "away team"
@@ -111,6 +123,9 @@ erDiagram
     GAME   ||--o{ MOMENT            : "tracked in"
     EVENT  ||--o{ EVENT_PARTICIPANT : "involves"
     PLAYER ||--o{ EVENT_PARTICIPANT : "participates as"
+    PLAYER ||--o{ PLAYER_TEAM_SEASON : "roster stints (SCD2)"
+    TEAM   ||--o{ PLAYER_TEAM_SEASON : "rosters"
+    SEASON ||--o{ PLAYER_TEAM_SEASON : "within"
     PLAYER ||--o{ PLAYER_LOCATION   : "located as"
     MOMENT ||--o{ PLAYER_LOCATION   : "captures"
     EVENT  ||--o{ MOMENT            : "aligns: derived, fuzzy clock"
