@@ -14,10 +14,14 @@
 - **On-court lineup is deliberately absent** — the 10 on-court players come *from the tracking moment itself*
   (`PLAYER_LOCATION`), so no lineup table is needed. `EVENT_PARTICIPANT` is the *direct play participants*
   bridge (shooter/assister/fouler), which is a different thing and **is** implemented.
-- **`SHOT` folded into `EVENT`** — a shot is a 1:1 specialization, so its PBP facts live on `EVENT`
-  (`shot_made_flag` now; `points`/`shot_type` later). Shot *geometry* (`shot_distance`/`shot_zone`) is a
-  cross-source derivation computed in the gold serving mart (not a dimensional entity), and
-  `contested_distance` is future/EPV.
+- **`SHOT` facts folded into `EVENT`; shot *location* is the `SHOT_LOCATION` fact.** A shot's PBP facts
+  live on `EVENT` (`shot_made_flag` now; `points`/`shot_type` later). Its court **location** is the
+  `SHOT_LOCATION` fact (one row per field-goal attempt), derived by `parse_shot_locations.py` from the
+  **ball trajectory** (ball-at-rim → release) — *not* a fuzzy clock match, because PBP and SportVU clocks
+  aren't synced to the second. Shot *geometry* (`shot_distance`/`is_three`) is then computed in the gold
+  mart from those release coords; `contested_distance` is future/EPV.
+- **`EVENT ⟷ MOMENT` fuzzy-clock alignment was dropped.** It located shots ~9 ft off (clock desync); the
+  full-floor 10-player snapshot that needed it is deferred (it requires per-event tracking windows).
 - **`PLAYER` is bio-only; team modeled by the `PLAYER_TEAM_SEASON` SCD2 bridge.** A player's team is
   time-varying (trades/seasons), so it's not a static player attribute. Team *for a given play* comes
   from the facts (`PLAYER_LOCATION`/`EVENT_PARTICIPANT`); roster history is the Type-2 SCD bridge
@@ -83,6 +87,16 @@ erDiagram
         decimal loc_x
         decimal loc_y
     }
+    SHOT_LOCATION {
+        int     game_id            PK,FK
+        int     event_id           PK,FK
+        int     shot_player_id     FK
+        decimal shooter_x   "release: shooter feet"
+        decimal shooter_y
+        decimal ball_x      "release: ball (official basis)"
+        decimal ball_y
+        decimal release_game_clock
+    }
 
     %% ============ BRIDGE ============
     EVENT_PARTICIPANT {
@@ -128,7 +142,8 @@ erDiagram
     SEASON ||--o{ PLAYER_TEAM_SEASON : "within"
     PLAYER ||--o{ PLAYER_LOCATION   : "located as"
     MOMENT ||--o{ PLAYER_LOCATION   : "captures"
-    EVENT  ||--o{ MOMENT            : "aligns: derived, fuzzy clock"
+    EVENT  ||--o| SHOT_LOCATION     : "located (ball-trajectory release)"
+    PLAYER ||--o{ SHOT_LOCATION     : "shoots"
 
     %% ---- relationships (FUTURE / not built) ----
     GAME       ||--o{ POSSESSION : "contains (future)"
@@ -159,23 +174,25 @@ flowchart LR
         s1[MOMENT]
         s2[PLAYER_LOCATION]
         s3["EVENT<br/>(shot facts folded in)"]
+        s4["SHOT_LOCATION<br/>(ball-trajectory release)"]
         s5["dims: GAME / PLAYER / TEAM / SEASON"]
     end
     subgraph GOLD["GOLD · serving marts"]
-        g1["events_with_location<br/>(event × player, full-floor)"]
+        g1["events_with_location<br/>(event-grain; shots located)"]
     end
 
     b1 --> s1
     b1 --> s2
     b2 --> s3
-    s1 -->|ball + clocks| g1
-    s2 -->|player x,y| g1
-    s3 -->|"fuzzy clock (nearest, ±~1.5–2s)"| g1
-    s5 -->|names| g1
+    b1 -->|ball arc + shooter| s4
+    b2 -->|"shot events (eventId)"| s4
+    s3 -->|event spine| g1
+    s4 -->|"release x,y → geometry"| g1
 
-    pf["POSSESSION + lineup<br/>FUTURE / not built"]:::future
+    ff["full-floor (event × 10 players)<br/>+ POSSESSION + lineup<br/>FUTURE / not built"]:::future
     classDef future fill:#eee,stroke:#999,stroke-dasharray:5 5,color:#666;
 ```
 
-> Streamlit reads `events_with_location` directly (thin view) — all joining/fuzzy-matching is resolved upstream in gold.
+> Streamlit reads `events_with_location` directly (thin view) — all shot-location/geometry work is resolved upstream.
+> `MOMENT`/`PLAYER_LOCATION` remain in silver for the deferred full-floor view; they are not currently joined into gold.
 > To export a PNG for a deck: `mmdc -i schema/er_diagram.md -o schema/er_diagram_new.png` (mermaid-cli), or paste a block into <https://mermaid.live>.

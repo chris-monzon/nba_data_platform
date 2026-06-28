@@ -70,30 +70,29 @@ def silver_path(output_root: str, dataset: str, game: Game, filename: str) -> st
 
 def exists(dest: str) -> bool:
     if is_gcs(dest):
-        raise NotImplementedError("GCS existence check deferred — see write_bytes seam")
+        from google.cloud import storage
+        bucket, _, blob = dest[len("gs://"):].partition("/")
+        return storage.Client().bucket(bucket).blob(blob).exists()
     return os.path.exists(dest)
 
 
 def read_bytes(src: str) -> bytes:
-    """Read bytes from a local path, or (later) GCS. Mirror of write_bytes."""
+    """Read bytes from a local path or GCS. Mirror of write_bytes."""
     if is_gcs(src):
-        # Deferred seam — fill with google-cloud-storage (already a dependency):
-        #   from google.cloud import storage
-        #   bucket, _, blob = src[len("gs://"):].partition("/")
-        #   return storage.Client().bucket(bucket).blob(blob).download_as_bytes()
-        raise NotImplementedError("GCS read deferred — read from a local --output-root for now")
+        from google.cloud import storage
+        bucket, _, blob = src[len("gs://"):].partition("/")
+        return storage.Client().bucket(bucket).blob(blob).download_as_bytes()
     with open(src, "rb") as f:
         return f.read()
 
 
 def write_bytes(dest: str, data: bytes) -> None:
-    """Write bytes to a local path, or (later) GCS. Only the root differs."""
+    """Write bytes to a local path or GCS. Only the root differs."""
     if is_gcs(dest):
-        # Deferred seam — fill with google-cloud-storage (already a dependency):
-        #   from google.cloud import storage
-        #   bucket, _, blob = dest[len("gs://"):].partition("/")
-        #   storage.Client().bucket(bucket).blob(blob).upload_from_string(data)
-        raise NotImplementedError("GCS upload deferred — write to a local --output-root for now")
+        from google.cloud import storage
+        bucket, _, blob = dest[len("gs://"):].partition("/")
+        storage.Client().bucket(bucket).blob(blob).upload_from_string(data)
+        return
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     with open(dest, "wb") as f:
         f.write(data)
