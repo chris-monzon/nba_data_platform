@@ -12,38 +12,45 @@ This repo is the **platform layer** (ingestion → warehouse → gold tables). T
 
 ## What it is
 
-The game becomes a stream of **events in space and time** rather than a box score. We join each
-play-by-play event to the tracking moment at that instant to get its court `(x, y)` location,
-then expose it as a dashboard: *select a player + event type → see a court map of where those
-events occurred* (e.g. a player's shot map).
+The game becomes a stream of **events in space and time** rather than a box score. For each shot,
+we recover its true court `(x, y)` from the SportVU **ball trajectory** — detecting the release
+frame from the ball's flight rather than matching clocks (the two feeds aren't synced to the
+second). We expose it as a dashboard: *select a player → see their shot map*.
 
 ## Architecture
 
 ```
- Sources                Ingest (Cloud Run)        Warehouse (BigQuery)         Serve
- ───────                ──────────────────        ────────────────────         ─────
- SportVU tracking  ─┐   parse 25Hz JSON           silver: cleaned tables       Streamlit app
- (.7z JSON, GitHub) │   → tabular Parquet  ──┐                                  (consumer)
-                    ├─►                      ├─► load → BQ ──► SQL fuzzy-join ──► gold
- Play-by-play       │   fetch via            │                 (PBP ↔ tracking)  events_with_
- (nba_on_court lib) ─┘   nba_on_court  ───────┘                                  location
+ Sources                Ingest (Python, Cloud Run-ready)   Warehouse (BigQuery)        Serve
+ ───────                ────────────────────────────────   ────────────────────        ─────
+ SportVU tracking  ─┐   parse 25Hz JSON → Parquet           silver: PBP event model     Streamlit
+ (.7z JSON, GitHub) │   locate shots from ball trajectory   + tracking (external)       shot-map
+                    ├─►                                  ──► load → BQ ─► SQL join ──►   app
+ Play-by-play       │   fetch via                                       + geometry       (consumer)
+ (nba_on_court lib) ─┘   nba_on_court                                                    events_with_
+                                                                                         location
 ```
 
 **Medallion layers**
 - **Bronze** — raw, untransformed (subset of games) landed in GCS.
-- **Silver** — parsed/cleaned/conformed tables (tracking moments, PBP).
-- **Gold** — `events_with_location`: one row per event with the acting player's court `(x, y)`
-  at event time. This is what the dashboard reads.
+- **Silver** — parsed/cleaned/conformed tables: PBP event model, tracking moments, shot
+  locations, and conformed dimensions.
+- **Gold** — `events_with_location`: one row per PBP event; field-goal attempts carry the shot's
+  court `(x, y)` plus distance and 3PT geometry, other events carry NULL location. This is what
+  the dashboard reads.
 
-The headline transformation is the **fuzzy-clock join** of PBP events to the nearest 25 Hz
-tracking moment, done in **BigQuery SQL** (`transform/gold_events_with_location.sql`).
+The headline transformation **locates each shot from the SportVU ball trajectory**: find the frame
+where the ball passes through the rim, then back up to the release — sidestepping the fact that the
+PBP and tracking clocks aren't synced to the second (a naive clock-match lands ~9 ft off, up to
+40 ft on transition). Done in Python (`ingestion/parse_shot_locations.py`); the gold SQL
+(`transform/gold_events_with_location.sql`) then joins it to the PBP event spine and adds shot
+distance + 3PT classification.
 
 ## Tech stack
 
 | Layer | Tool | Role |
 |---|---|---|
 | Storage | **GCS** | bronze/silver/gold object storage |
-| Ingestion | **Python on Cloud Run** | parse heavy JSON → Parquet (per-game, idempotent) |
+| Ingestion | **Python** (containerized, Cloud Run-ready) | parse heavy JSON → Parquet + locate shots (per-game, idempotent) |
 | Warehouse | **BigQuery** | single OLAP warehouse; SQL transforms |
 | Serve | **Streamlit** | interactive event-map dashboard (consumer) |
 
@@ -66,13 +73,17 @@ uv sync
 cp .env.example .env        # then fill in your GCP values
 gcloud auth application-default login
 
-# 3. (Pipeline — in progress)
-#    uv run python ingestion/download_tracking.py
-#    uv run python ingestion/fetch_pbp.py
-#    uv run python ingestion/parse_tracking.py
-#    ...then run the BigQuery SQL in transform/
+# 3. Run ingestion (bronze → silver Parquet), per-game and idempotent
+uv run python -m ingestion.download_tracking     # SportVU .7z  → bronze JSON
+uv run python -m ingestion.fetch_pbp             # play-by-play → bronze Parquet
+uv run python -m ingestion.parse_tracking        # 25Hz JSON    → silver Parquet (moment + player_location)
+uv run python -m ingestion.parse_dims            # dims (player/team/game/season) from tracking headers
+uv run python -m ingestion.parse_shot_locations  # locate shots from ball trajectory → silver Parquet
 
-# 4. Launch the dashboard (consumer)
+# 4. Build silver + gold in BigQuery (run the SQL in transform/, in order)
+#    silver_tracking.sql · silver_pbp.sql · silver_dims.sql · silver_shot_location.sql · gold_events_with_location.sql
+
+# 5. Launch the dashboard (consumer)
 uv run streamlit run app/streamlit_app.py
 ```
 
