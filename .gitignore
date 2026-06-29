@@ -30,12 +30,24 @@ __pycache__/
 # --- Notebooks ---
 .ipynb_checkpoints/
 
-# --- Terraform / infra (gitignored entirely; not committed for now) ---
-infra/
+# --- Terraform / infra ---
+# Safe .tf config is committed; infra/.gitignore is deny-by-default and decides
+# exactly what ships. These repo-wide rules are belt-and-suspenders so state,
+# plans, vars, locks, and provider binaries can never be committed from ANY path:
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
 *.tfplan
+.terraform/
+.terraform.tfstate.lock.info
 crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # --- OS / editor ---
 .DS_Store
