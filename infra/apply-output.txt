@@ -1,0 +1,43 @@
+$ gcloud config set project nba-data-architecture
+$ terraform -chdir=infra apply
+# (full plan elided — see `terraform plan` / the *.tf files; summary below)
+
+Plan: 3 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + bucket_url     = (known after apply)
+  + gold_dataset   = "nba_gold"
+  + silver_dataset = "nba_silver"
+
+google_bigquery_dataset.gold: Creating...
+google_bigquery_dataset.silver: Creating...
+google_storage_bucket.lake: Creating...
+google_storage_bucket.lake: Creation complete after 1s [id=nba-data-architecture-lake]
+google_bigquery_dataset.gold: Creation complete after 1s [id=projects/nba-data-architecture/datasets/nba_gold]
+google_bigquery_dataset.silver: Creation complete after 1s [id=projects/nba-data-architecture/datasets/nba_silver]
+
+Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+bucket_url     = "gs://nba-data-architecture-lake"
+gold_dataset   = "nba_gold"
+silver_dataset = "nba_silver"
+
+# --- Live verification (terraform state matches real cloud) ---
+$ terraform -chdir=infra state list
+google_bigquery_dataset.gold
+google_bigquery_dataset.silver
+google_storage_bucket.lake
+
+$ gcloud storage buckets describe gs://nba-data-architecture-lake \
+    --format="yaml(name, location, public_access_prevention, uniform_bucket_level_access, labels)"
+labels:
+  goog-terraform-provisioned: 'true'
+  layer: lake
+  managed_by: terraform
+  project: nba-data-architecture
+location: US-CENTRAL1
+name: nba-data-architecture-lake
+public_access_prevention: enforced
+uniform_bucket_level_access: true

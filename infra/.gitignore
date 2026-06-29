@@ -1,0 +1,38 @@
+# infra/.gitignore — Terraform (deny-by-default / allowlist)
+#
+# SECURITY MODEL: ignore EVERYTHING in this directory, then re-include only the
+# handful of safe, human-reviewable files below. Anything new — a state file, a
+# *.tfvars, a service-account key, a crash log — is excluded automatically
+# because it was never re-included. The default is "do not commit."
+#
+# NOTE: gitignore has NO inline comments. Every pattern is on its own line;
+# a trailing "# ..." would become part of the pattern and silently break it.
+
+# 1) Ignore everything in infra/ by default.
+*
+
+# 2) Re-include ONLY safe, non-sensitive source-of-truth files.
+# this file itself
+!.gitignore
+# docs
+!README.md
+# main.tf / variables.tf / outputs.tf — config only, no secrets
+!*.tf
+# provider checksums; safe + recommended to commit
+!.terraform.lock.hcl
+# sanitized `terraform apply` proof (bonus artifact)
+!apply-output.txt
+
+# ----------------------------------------------------------------------------
+# DELIBERATELY NEVER RE-INCLUDED (kept ignored by the `*` above). Listed so the
+# intent is explicit and a reviewer can confirm nothing sensitive slips in:
+#
+#   terraform.tfstate, *.tfstate, *.tfstate.*   -> may embed resource data/secrets
+#   *.tfvars, *.tfvars.json, *.auto.tfvars*     -> may hold project IDs / secrets
+#   .terraform/                                 -> downloaded provider binaries
+#   .terraform.tfstate.lock.info                -> local state lock
+#   *.tfplan                                    -> binary plan can embed secrets
+#   crash.log, crash.*.log                      -> may dump state on panic
+#   *.json, *.pem, *.key, *-sa.json, *-key.json -> credentials / SA keys
+#   override.tf, *_override.tf(.json)           -> local-only overrides
+# ----------------------------------------------------------------------------
